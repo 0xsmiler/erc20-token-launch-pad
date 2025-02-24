@@ -1,14 +1,13 @@
-import { useState } from "react";
+/* eslint-disable no-unused-vars */
+import { useState, useEffect, useRef } from "react";
 import { useAccount, useWriteContract, useReadContract } from "wagmi";
-import { formatEther, parseUnits } from "ethers";
+import { parseUnits, formatEther } from "ethers";
 import InputField from "./InputField";
 import Section from "./Section";
 import TaxSection from "./TaxSection";
 
-// Import the ABI from a JSON file
-import LiquiShieldABI from "../abi/LiquiShieldABI.json"; // Adjust path as needed
+import LiquiShieldABI from "../abi/LiquiShieldABI.json"; // Adjust path
 
-// Replace with your deployed contract address
 const LIQUI_SHIELD_ADDRESS = "0xEE9b4ddC9e4d26c91E0a6ac552eb88fC60E49a07";
 
 const Detail = () => {
@@ -25,6 +24,13 @@ const Detail = () => {
   const [initialTax, setInitialTax] = useState({ marketing: 0, development: 0, liquidity: 0 });
   const [finalTax, setFinalTax] = useState({ marketing: 0, development: 0, liquidity: 0 });
   const [txStatus, setTxStatus] = useState("");
+  const [alert, setAlert] = useState({ message: "", type: "", show: false }); // State for alerts
+
+  // Refs for input fields to enable scrolling
+  const tokenNameRef = useRef(null);
+  const tokenSymbolRef = useRef(null);
+  const tokenSupplyRef = useRef(null);
+  const marketingWalletRef = useRef(null);
 
   // Fetch the fee from the contract
   const { data: fee } = useReadContract({
@@ -33,24 +39,46 @@ const Detail = () => {
     functionName: "fee",
   });
 
-  // Encode tax values (0xCCBBAA format)
+  // Debug logs
+  console.log("Raw fee from contract (wei):", fee?.toString());
+  console.log("Formatted fee (ETH):", fee ? formatEther(fee) : "0.1");
+
   const encodeTax = (tax) => {
-    const marketing = Math.min(tax.marketing || 0, 15) & 0xFF; // AA
-    const liquidity = (Math.min(tax.liquidity || 0, 15) & 0xFF) << 8; // BB
-    const development = (Math.min(tax.development || 0, 15) & 0xFF) << 16; // CC
+    const marketing = Math.min(tax.marketing || 0, 15) & 0xFF;
+    const liquidity = (Math.min(tax.liquidity || 0, 15) & 0xFF) << 8;
+    const development = (Math.min(tax.development || 0, 15) & 0xFF) << 16;
     return development | liquidity | marketing;
   };
 
-  // Use useWriteContract for Wagmi v2
   const { writeContract, isPending, isSuccess, error } = useWriteContract();
 
-  // Handle form submission
   const handleCreateToken = () => {
-    if (!tokenName || !tokenSymbol || !tokenSupply || !marketingWallet) {
-      setTxStatus("Please fill all required fields.");
+    // Reset previous alert
+    setAlert({ message: "", type: "", show: false });
+
+    // Sequential validation with alerts and auto-scroll
+    if (!tokenName) {
+      setAlert({ message: "Please enter token name.", type: "error", show: true });
+      tokenNameRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (!tokenSymbol) {
+      setAlert({ message: "Please enter token symbol.", type: "error", show: true });
+      tokenSymbolRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (!tokenSupply || isNaN(tokenSupply) || Number(tokenSupply) <= 0) {
+      setAlert({ message: "Token Supply must be a positive number.", type: "error", show: true });
+      tokenSupplyRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (!marketingWallet || !/^0x[a-fA-F0-9]{40}$/.test(marketingWallet)) {
+      setAlert({ message: "Marketing Wallet must be a valid Ethereum address.", type: "error", show: true });
+      marketingWalletRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
 
+    // Proceed with token creation if no errors
     writeContract({
       address: LIQUI_SHIELD_ADDRESS,
       abi: LiquiShieldABI,
@@ -58,7 +86,7 @@ const Detail = () => {
       args: [
         tokenName,
         tokenSymbol,
-        parseUnits(tokenSupply, 0), // No decimals here, handled in contract
+        parseUnits(tokenSupply, 0),
         encodeTax(initialTax),
         encodeTax(finalTax),
         marketingWallet,
@@ -66,9 +94,10 @@ const Detail = () => {
         twitter || "",
         telegram || ""
       ],
-      value: fee || parseUnits("0.1", "ether"),// Use contract fee or fallback to 0.1 ETH
+      value: fee || parseUnits("0.1", "ether"),
     }, {
       onSuccess: (data) => {
+        setAlert({ message: "Token created successfully!", type: "success", show: true });
         setTxStatus(`Token created! Transaction: ${data.hash}`);
       },
       onError: (err) => {
@@ -77,9 +106,18 @@ const Detail = () => {
     });
   };
 
+  // Auto-dismiss alert after 2 seconds
+  useEffect(() => {
+    if (alert.show) {
+      const timer = setTimeout(() => {
+        setAlert({ message: "", type: "", show: false });
+      }, 2000);
+      return () => clearTimeout(timer); // Cleanup on unmount or state change
+    }
+  }, [alert.show]);
+
   return (
     <div className="py-[100px] px-0 h-full">
-      {/* Header unchanged */}
       <div className="w-full h-[540px] bg-[url(/header-background.png)] bg-top bg-cover bg-no-repeat flex flex-col items-center">
         <div className="mt-[200px] flex items-center">
           <p className="text-white text-[22px] sm:text-[42px] md:text-[55px] font-semibold text-nowrap m-0 leading-normal">
@@ -101,7 +139,6 @@ const Detail = () => {
       </div>
 
       <div className="w-full mx-auto block sm:px-6 lg:max-w-[1200px]">
-        {/* Arrow unchanged */}
         <div className="mt-5 border border-solid border-transparent relative w-full h-16">
           <hr className="border-t-0 border-r-0 border-b border-l-0 border-solid my-8 mx-0 border-[#1F262F]" />
           <a className="absolute top-0 left-1/2 -translate-x-8 w-16 h-16 rounded-[32px] border border-solid border-[#1F262F] bg-[#030b15] flex items-center justify-center cursor-pointer">
@@ -123,8 +160,7 @@ const Detail = () => {
         </div>
 
         {isConnected ? (
-          <div className="flex flex-col pt-[30px] sm:pt-[50px]">
-            {/* Token Details Section */}
+          <div className="flex flex-col pt-[30px] sm:pt-[50px] relative">
             <div>
               <p className="m-0 leading-6 text-cyan-500 font-semibold text-lg sm:text-xl">
                 Token Details
@@ -140,6 +176,7 @@ const Detail = () => {
                   value={tokenName}
                   onChange={(e) => setTokenName(e.target.value)}
                   className="w-[calc(50%-10px)] sm:w-[calc(50%-20px)] lg:w-[calc(50%-30px)]"
+                  ref={tokenNameRef} // Add ref for scrolling
                 />
                 <InputField
                   label="Token Symbol"
@@ -148,6 +185,7 @@ const Detail = () => {
                   value={tokenSymbol}
                   onChange={(e) => setTokenSymbol(e.target.value)}
                   className="w-[calc(50%-10px)] sm:w-[calc(50%-20px)] lg:w-[calc(50%-30px)]"
+                  ref={tokenSymbolRef} // Add ref for scrolling
                 />
               </div>
               <InputField
@@ -158,10 +196,10 @@ const Detail = () => {
                 value={tokenSupply}
                 onChange={(e) => setTokenSupply(e.target.value)}
                 className="mt-5"
+                ref={tokenSupplyRef} // Add ref for scrolling
               />
             </div>
 
-            {/* Wallet & DEX Address Section */}
             <Section
               title="Wallet & DEX Address"
               description="Let us know your wallet information and dex address"
@@ -180,6 +218,7 @@ const Detail = () => {
                   value={marketingWallet}
                   onChange={(e) => setMarketingWallet(e.target.value)}
                   className="w-[calc(50%-10px)] sm:w-[calc(50%-20px)] lg:w-[calc(50%-30px)]"
+                  ref={marketingWalletRef} // Add ref for scrolling
                 />
               </div>
               <div className="flex items-center justify-between mt-5">
@@ -198,13 +237,12 @@ const Detail = () => {
               </div>
               <InputField
                 label="Router DEX Address"
-                value="0xeE567Fe1712Faf6149d80dA1E6934E354124CfE3" // Sepolia Uniswap
+                value="0xeE567Fe1712Faf6149d80dA1E6934E354124CfE3"
                 disabled
                 className="mt-5 w-[calc(50%-10px)] sm:w-[calc(50%-20px)] lg:w-[calc(50%-30px)]"
               />
             </Section>
 
-            {/* Contact Information Section */}
             <Section
               title="Contact Information"
               description="Enter social links to show your tokenomics"
@@ -234,7 +272,6 @@ const Detail = () => {
               />
             </Section>
 
-            {/* Tax Section */}
             <Section
               title="Tax"
               description="Set the initial & final Tax you want"
@@ -266,6 +303,15 @@ const Detail = () => {
             </div>
             {txStatus && (
               <p className="mt-5 text-center text-white">{txStatus}</p>
+            )}
+
+            {/* Styled Alert for Validation and Success (Left Bottom Corner) */}
+            {alert.show && (
+              <div className="fixed bottom-4 left-4 z-50 pointer-events-none">
+                <div className={`p-4 rounded-md shadow-lg animate-slideInOut ${alert.type === "error" ? "bg-red-600 text-white" : "bg-green-600 text-white"}`}>
+                  {alert.message}
+                </div>
+              </div>
             )}
           </div>
         ) : (
