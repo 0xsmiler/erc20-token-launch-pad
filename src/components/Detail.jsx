@@ -1,10 +1,10 @@
-/* eslint-disable no-unused-vars */
 import { useState, useEffect, useRef } from "react";
 import { useAccount, useWriteContract, useReadContract } from "wagmi";
 import { parseUnits, formatEther } from "ethers";
 import InputField from "./InputField";
 import Section from "./Section";
 import TaxSection from "./TaxSection";
+import SuccessModal from "./SuccessModal"; // Import the new component
 
 import LiquiShieldABI from "../abi/LiquiShieldABI.json"; // Adjust path
 
@@ -24,7 +24,9 @@ const Detail = () => {
   const [initialTax, setInitialTax] = useState({ marketing: 0, development: 0, liquidity: 0 });
   const [finalTax, setFinalTax] = useState({ marketing: 0, development: 0, liquidity: 0 });
   const [txStatus, setTxStatus] = useState("");
-  const [alert, setAlert] = useState({ message: "", type: "", show: false }); // State for alerts
+  const [alert, setAlert] = useState({ message: "", type: "", show: false }); // State for validation/success alerts
+  const [successModalOpen, setSuccessModalOpen] = useState(false); // State for success modal
+  const [newTokenAddress, setNewTokenAddress] = useState(""); // Store new token address from event
 
   // Refs for input fields to enable scrolling
   const tokenNameRef = useRef(null);
@@ -53,28 +55,37 @@ const Detail = () => {
   const { writeContract, isPending, isSuccess, error } = useWriteContract();
 
   const handleCreateToken = () => {
-    // Reset previous alert
+    // Reset previous alert and modal
     setAlert({ message: "", type: "", show: false });
+    setSuccessModalOpen(false);
 
     // Sequential validation with alerts and auto-scroll
     if (!tokenName) {
       setAlert({ message: "Please enter token name.", type: "error", show: true });
-      tokenNameRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (tokenNameRef.current) {
+        tokenNameRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
       return;
     }
     if (!tokenSymbol) {
       setAlert({ message: "Please enter token symbol.", type: "error", show: true });
-      tokenSymbolRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (tokenSymbolRef.current) {
+        tokenSymbolRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
       return;
     }
     if (!tokenSupply || isNaN(tokenSupply) || Number(tokenSupply) <= 0) {
       setAlert({ message: "Token Supply must be a positive number.", type: "error", show: true });
-      tokenSupplyRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (tokenSupplyRef.current) {
+        tokenSupplyRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
       return;
     }
     if (!marketingWallet || !/^0x[a-fA-F0-9]{40}$/.test(marketingWallet)) {
       setAlert({ message: "Marketing Wallet must be a valid Ethereum address.", type: "error", show: true });
-      marketingWalletRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (marketingWalletRef.current) {
+        marketingWalletRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
       return;
     }
 
@@ -97,8 +108,20 @@ const Detail = () => {
       value: fee || parseUnits("0.1", "ether"),
     }, {
       onSuccess: (data) => {
-        setAlert({ message: "Token created successfully!", type: "success", show: true });
-        setTxStatus(`Token created! Transaction: ${data.hash}`);
+        // Parse the TokenLaunched event to get the new token address
+        const receipt = data.wait(); // Wait for the transaction receipt
+        receipt.then((txReceipt) => {
+          const event = txReceipt.events.find(e => e.event === "TokenLaunched");
+          if (event) {
+            const tokenAddress = event.args._token;
+            setNewTokenAddress(tokenAddress);
+            setSuccessModalOpen(true); // Open success modal
+          } else {
+            setTxStatus("Failed to retrieve token address from transaction.");
+          }
+        }).catch((err) => {
+          setTxStatus(`Error retrieving token address: ${err.message}`);
+        });
       },
       onError: (err) => {
         setTxStatus(`Error: ${err.message}`);
@@ -115,6 +138,11 @@ const Detail = () => {
       return () => clearTimeout(timer); // Cleanup on unmount or state change
     }
   }, [alert.show]);
+
+  const closeSuccessModal = () => {
+    setSuccessModalOpen(false);
+    setNewTokenAddress(""); // Reset token address
+  };
 
   return (
     <div className="py-[100px] px-0 h-full">
@@ -176,7 +204,7 @@ const Detail = () => {
                   value={tokenName}
                   onChange={(e) => setTokenName(e.target.value)}
                   className="w-[calc(50%-10px)] sm:w-[calc(50%-20px)] lg:w-[calc(50%-30px)]"
-                  ref={tokenNameRef} // Add ref for scrolling
+                  ref={tokenNameRef}
                 />
                 <InputField
                   label="Token Symbol"
@@ -185,7 +213,7 @@ const Detail = () => {
                   value={tokenSymbol}
                   onChange={(e) => setTokenSymbol(e.target.value)}
                   className="w-[calc(50%-10px)] sm:w-[calc(50%-20px)] lg:w-[calc(50%-30px)]"
-                  ref={tokenSymbolRef} // Add ref for scrolling
+                  ref={tokenSymbolRef}
                 />
               </div>
               <InputField
@@ -196,7 +224,7 @@ const Detail = () => {
                 value={tokenSupply}
                 onChange={(e) => setTokenSupply(e.target.value)}
                 className="mt-5"
-                ref={tokenSupplyRef} // Add ref for scrolling
+                ref={tokenSupplyRef}
               />
             </div>
 
@@ -218,7 +246,7 @@ const Detail = () => {
                   value={marketingWallet}
                   onChange={(e) => setMarketingWallet(e.target.value)}
                   className="w-[calc(50%-10px)] sm:w-[calc(50%-20px)] lg:w-[calc(50%-30px)]"
-                  ref={marketingWalletRef} // Add ref for scrolling
+                  ref={marketingWalletRef}
                 />
               </div>
               <div className="flex items-center justify-between mt-5">
@@ -313,6 +341,17 @@ const Detail = () => {
                 </div>
               </div>
             )}
+
+            {/* Success Modal for Token Creation */}
+            <SuccessModal
+              isOpen={successModalOpen}
+              onClose={closeSuccessModal}
+              tokenName={tokenName}
+              tokenSymbol={tokenSymbol}
+              tokenSupply={tokenSupply}
+              tokenAddress={newTokenAddress}
+              txHash={txStatus.split("Transaction: ")[1] || ""}
+            />
           </div>
         ) : (
           <div className="flex flex-col pt-[30px] sm:pt-[50px] text-center text-cyan-500 text-lg lg:text-2xl">
