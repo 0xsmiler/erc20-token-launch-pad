@@ -1,12 +1,85 @@
-import { useAccount } from "wagmi";
+import { useState } from "react";
+import { useAccount, useWriteContract, useReadContract } from "wagmi";
+import { formatEther, parseUnits } from "ethers";
 import InputField from "./InputField";
 import Section from "./Section";
 import TaxSection from "./TaxSection";
 
+// Import the ABI from a JSON file
+import LiquiShieldABI from "../abi/LiquiShieldABI.json"; // Adjust path as needed
+
+// Replace with your deployed contract address
+const LIQUI_SHIELD_ADDRESS = "0xEE9b4ddC9e4d26c91E0a6ac552eb88fC60E49a07";
+
 const Detail = () => {
   const { address, isConnected } = useAccount();
+
+  // State for form inputs
+  const [tokenName, setTokenName] = useState("");
+  const [tokenSymbol, setTokenSymbol] = useState("");
+  const [tokenSupply, setTokenSupply] = useState("");
+  const [marketingWallet, setMarketingWallet] = useState("");
+  const [website, setWebsite] = useState("");
+  const [twitter, setTwitter] = useState("");
+  const [telegram, setTelegram] = useState("");
+  const [initialTax, setInitialTax] = useState({ marketing: 0, development: 0, liquidity: 0 });
+  const [finalTax, setFinalTax] = useState({ marketing: 0, development: 0, liquidity: 0 });
+  const [txStatus, setTxStatus] = useState("");
+
+  // Fetch the fee from the contract
+  const { data: fee } = useReadContract({
+    address: LIQUI_SHIELD_ADDRESS,
+    abi: LiquiShieldABI,
+    functionName: "fee",
+  });
+
+  // Encode tax values (0xCCBBAA format)
+  const encodeTax = (tax) => {
+    const marketing = Math.min(tax.marketing || 0, 15) & 0xFF; // AA
+    const liquidity = (Math.min(tax.liquidity || 0, 15) & 0xFF) << 8; // BB
+    const development = (Math.min(tax.development || 0, 15) & 0xFF) << 16; // CC
+    return development | liquidity | marketing;
+  };
+
+  // Use useWriteContract for Wagmi v2
+  const { writeContract, isPending, isSuccess, error } = useWriteContract();
+
+  // Handle form submission
+  const handleCreateToken = () => {
+    if (!tokenName || !tokenSymbol || !tokenSupply || !marketingWallet) {
+      setTxStatus("Please fill all required fields.");
+      return;
+    }
+
+    writeContract({
+      address: LIQUI_SHIELD_ADDRESS,
+      abi: LiquiShieldABI,
+      functionName: "deployToken",
+      args: [
+        tokenName,
+        tokenSymbol,
+        parseUnits(tokenSupply, 0), // No decimals here, handled in contract
+        encodeTax(initialTax),
+        encodeTax(finalTax),
+        marketingWallet,
+        website || "",
+        twitter || "",
+        telegram || ""
+      ],
+      value: fee || parseUnits("0.1", "ether"),// Use contract fee or fallback to 0.1 ETH
+    }, {
+      onSuccess: (data) => {
+        setTxStatus(`Token created! Transaction: ${data.hash}`);
+      },
+      onError: (err) => {
+        setTxStatus(`Error: ${err.message}`);
+      },
+    });
+  };
+
   return (
     <div className="py-[100px] px-0 h-full">
+      {/* Header unchanged */}
       <div className="w-full h-[540px] bg-[url(/header-background.png)] bg-top bg-cover bg-no-repeat flex flex-col items-center">
         <div className="mt-[200px] flex items-center">
           <p className="text-white text-[22px] sm:text-[42px] md:text-[55px] font-semibold text-nowrap m-0 leading-normal">
@@ -26,7 +99,9 @@ const Detail = () => {
           required.
         </p>
       </div>
+
       <div className="w-full mx-auto block sm:px-6 lg:max-w-[1200px]">
+        {/* Arrow unchanged */}
         <div className="mt-5 border border-solid border-transparent relative w-full h-16">
           <hr className="border-t-0 border-r-0 border-b border-l-0 border-solid my-8 mx-0 border-[#1F262F]" />
           <a className="absolute top-0 left-1/2 -translate-x-8 w-16 h-16 rounded-[32px] border border-solid border-[#1F262F] bg-[#030b15] flex items-center justify-center cursor-pointer">
@@ -62,12 +137,16 @@ const Detail = () => {
                   label="Token Name"
                   placeholder="Enter your token name"
                   required
+                  value={tokenName}
+                  onChange={(e) => setTokenName(e.target.value)}
                   className="w-[calc(50%-10px)] sm:w-[calc(50%-20px)] lg:w-[calc(50%-30px)]"
                 />
                 <InputField
                   label="Token Symbol"
                   placeholder="Enter your token symbol"
                   required
+                  value={tokenSymbol}
+                  onChange={(e) => setTokenSymbol(e.target.value)}
                   className="w-[calc(50%-10px)] sm:w-[calc(50%-20px)] lg:w-[calc(50%-30px)]"
                 />
               </div>
@@ -76,6 +155,8 @@ const Detail = () => {
                 placeholder="Enter your token supply"
                 type="number"
                 required
+                value={tokenSupply}
+                onChange={(e) => setTokenSupply(e.target.value)}
                 className="mt-5"
               />
             </div>
@@ -96,6 +177,8 @@ const Detail = () => {
                   label="Marketing Wallet"
                   placeholder="Enter your marketing wallet address"
                   required
+                  value={marketingWallet}
+                  onChange={(e) => setMarketingWallet(e.target.value)}
                   className="w-[calc(50%-10px)] sm:w-[calc(50%-20px)] lg:w-[calc(50%-30px)]"
                 />
               </div>
@@ -115,7 +198,7 @@ const Detail = () => {
               </div>
               <InputField
                 label="Router DEX Address"
-                value="0x5FE315412D1AC145312531322F1B122EF2A"
+                value="0xeE567Fe1712Faf6149d80dA1E6934E354124CfE3" // Sepolia Uniswap
                 disabled
                 className="mt-5 w-[calc(50%-10px)] sm:w-[calc(50%-20px)] lg:w-[calc(50%-30px)]"
               />
@@ -130,17 +213,23 @@ const Detail = () => {
                 <InputField
                   label="Website"
                   placeholder="https://yourwebsite.com"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
                   className="w-[calc(50%-10px)] sm:w-[calc(50%-20px)] lg:w-[calc(50%-30px)]"
                 />
                 <InputField
                   label="Telegram"
                   placeholder="https://t.me/@"
+                  value={telegram}
+                  onChange={(e) => setTelegram(e.target.value)}
                   className="w-[calc(50%-10px)] sm:w-[calc(50%-20px)] lg:w-[calc(50%-30px)]"
                 />
               </div>
               <InputField
                 label="Twitter"
                 placeholder="https://twitter.com/@"
+                value={twitter}
+                onChange={(e) => setTwitter(e.target.value)}
                 className="mt-5 w-[calc(50%-10px)] sm:w-[calc(50%-20px)] lg:w-[calc(50%-30px)]"
               />
             </Section>
@@ -150,19 +239,34 @@ const Detail = () => {
               title="Tax"
               description="Set the initial & final Tax you want"
             >
-              <TaxSection title="Initial Tax" maxTax="15" />
-              <TaxSection title="Final Tax" maxTax="5" />
+              <TaxSection
+                title="Initial Tax"
+                maxTax="15"
+                onTaxChange={(tax) => setInitialTax(tax)}
+              />
+              <TaxSection
+                title="Final Tax"
+                maxTax="5"
+                onTaxChange={(tax) => setFinalTax(tax)}
+              />
             </Section>
 
             <p className="mt-5 mx-0 mb-0 leading-6 text-white/50 font-bold text-base sm:text-lg">
-              A fixed 0.1ETH will be charged for creating the token. Please make
+              A fixed {fee ? formatEther(fee) : "0.1"} ETH will be charged for creating the token. Please make
               sure you have enough ETH to cover the fee + gas cost.
             </p>
             <div className="flex items-center justify-center mt-[50px] sm:mt-20">
-              <button className="bg-cyan-500 text-white px-8 py-3 rounded-full font-bold text-lg shadow-md hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-opacity-50">
-                Create a Token
+              <button
+                className="bg-cyan-500 text-white px-8 py-3 rounded-full font-bold text-lg shadow-md hover:bg-cyan-600 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-opacity-50 disabled:opacity-50"
+                onClick={handleCreateToken}
+                disabled={isPending}
+              >
+                {isPending ? "Creating..." : "Create a Token"}
               </button>
             </div>
+            {txStatus && (
+              <p className="mt-5 text-center text-white">{txStatus}</p>
+            )}
           </div>
         ) : (
           <div className="flex flex-col pt-[30px] sm:pt-[50px] text-center text-cyan-500 text-lg lg:text-2xl">

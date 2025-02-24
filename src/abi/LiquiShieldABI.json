@@ -1,0 +1,72 @@
+[
+  {
+    "inputs": [
+      { "internalType": "address", "name": "_feeCollector", "type": "address" },
+      { "internalType": "uint256", "name": "_fee", "type": "uint256" }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "_token",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "_deployerAddress",
+        "type": "address"
+      }
+    ],
+    "name": "TokenLaunched",
+    "type": "event"
+  },
+  { "stateMutability": "payable", "type": "fallback" },
+  {
+    "inputs": [
+      { "internalType": "string", "name": "_name", "type": "string" },
+      { "internalType": "string", "name": "_symbol", "type": "string" },
+      {
+        "internalType": "uint256",
+        "name": "_tokenTotalSupply",
+        "type": "uint256"
+      },
+      { "internalType": "uint256", "name": "_initialTax", "type": "uint256" },
+      { "internalType": "uint256", "name": "_finalTax", "type": "uint256" },
+      {
+        "internalType": "address",
+        "name": "_marketingWallet",
+        "type": "address"
+      },
+      { "internalType": "string", "name": "_website", "type": "string" },
+      { "internalType": "string", "name": "_twitter", "type": "string" },
+      { "internalType": "string", "name": "_telegram", "type": "string" }
+    ],
+    "name": "deployToken",
+    "outputs": [
+      { "internalType": "address", "name": "tokenAddr", "type": "address" }
+    ],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "fee",
+    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "feeCollector",
+    "outputs": [{ "internalType": "address", "name": "", "type": "address" }],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  { "stateMutability": "payable", "type": "receive" }
+]
